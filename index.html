@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FakeGuard — Merchant Risk Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --border: #1e2d45;
+    --accent: #00d4ff;
+    --accent2: #ff4d6d;
+    --accent3: #00ff9d;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --warn: #f59e0b;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* TOPBAR */
+  .topbar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 28px; height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent), #0066ff);
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Mono', monospace; font-size: 12px; font-weight: 700; color: #fff;
+  }
+  .logo-text { font-family: 'Space Mono', monospace; font-size: 13px; font-weight: 700; }
+  .logo-text span { color: var(--accent); }
+  .status-badge {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(0,255,157,0.1); border: 1px solid rgba(0,255,157,0.3);
+    padding: 4px 12px; border-radius: 20px;
+    font-size: 11px; font-weight: 600; color: var(--accent3);
+    font-family: 'Space Mono', monospace;
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent3); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .model-badge {
+    font-family: 'Space Mono', monospace; font-size: 11px; color: var(--muted);
+    background: var(--surface2); padding: 4px 10px; border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  /* MAIN */
+  .main { display: flex; min-height: calc(100vh - 56px); }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 220px; min-width: 220px; background: var(--surface);
+    border-right: 1px solid var(--border); padding: 20px 0;
+    position: sticky; top: 56px; height: calc(100vh - 56px); overflow-y: auto;
+  }
+  .sidebar-section { padding: 0 16px; margin-bottom: 24px; }
+  .sidebar-label {
+    font-size: 10px; font-weight: 600; color: var(--muted);
+    letter-spacing: 1.5px; text-transform: uppercase; padding: 0 8px; margin-bottom: 8px;
+  }
+  .sidebar-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 6px;
+    font-size: 13px; font-weight: 500; color: var(--muted);
+    cursor: pointer; margin-bottom: 2px; transition: all 0.2s;
+  }
+  .sidebar-item:hover { background: var(--surface2); color: var(--text); }
+  .sidebar-item.active {
+    background: rgba(0,212,255,0.08); color: var(--accent);
+    border-left: 2px solid var(--accent); margin-left: -2px;
+  }
+  .sidebar-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .model-info-box {
+    margin: 0 16px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+  }
+  .mi-label { font-size: 10px; color: var(--muted); margin-bottom: 6px; letter-spacing: 1px; text-transform: uppercase; }
+  .mi-name { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--accent3); margin-bottom: 8px; }
+  .mi-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .mi-key { font-size: 11px; color: var(--muted); }
+  .mi-val { font-size: 11px; font-weight: 600; color: var(--text); font-family: 'Space Mono', monospace; }
+
+  /* CONTENT */
+  .content { flex: 1; padding: 24px; overflow-y: auto; }
+  .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+  .page-title { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+  .page-sub { font-size: 13px; color: var(--muted); }
+
+  /* SCORE BUTTON */
+  .score-btn {
+    background: var(--accent); color: #000; font-size: 13px; font-weight: 700;
+    padding: 10px 20px; border-radius: 8px; font-family: 'Space Mono', monospace;
+    cursor: pointer; border: none; letter-spacing: 0.5px; transition: opacity 0.2s;
+  }
+  .score-btn:hover { opacity: 0.85; }
+
+  /* STAT CARDS */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; position: relative; overflow: hidden;
+  }
+  .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
+  .stat-card.c-blue::before { background: var(--accent); }
+  .stat-card.c-red::before { background: var(--accent2); }
+  .stat-card.c-green::before { background: var(--accent3); }
+  .stat-card.c-yellow::before { background: var(--warn); }
+  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+  .stat-value { font-family: 'Space Mono', monospace; font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+  .stat-value.red { color: var(--accent2); }
+  .stat-value.green { color: var(--accent3); }
+  .stat-value.yellow { color: var(--warn); }
+  .stat-change { font-size: 12px; color: var(--muted); }
+  .stat-change .up { color: var(--accent3); font-weight: 600; }
+
+  /* GRID */
+  .mid-row { display: grid; grid-template-columns: 1fr 360px; gap: 16px; margin-bottom: 24px; }
+  .bottom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  /* CARD */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .card-header {
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .card-title { font-size: 14px; font-weight: 600; }
+  .card-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* TABLE */
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    padding: 10px 16px; text-align: left;
+    font-size: 10px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 1px;
+    border-bottom: 1px solid var(--border); background: var(--surface2);
+  }
+  td { padding: 11px 16px; font-size: 12px; border-bottom: 1px solid rgba(30,45,69,0.5); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+  .mid { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--accent); }
+  .risk-badge {
+    display: inline-flex; align-items: center;
+    padding: 3px 8px; border-radius: 4px;
+    font-size: 10px; font-weight: 700;
+    font-family: 'Space Mono', monospace; letter-spacing: 0.5px;
+  }
+  .r-high { background: rgba(255,77,109,0.15); color: var(--accent2); border: 1px solid rgba(255,77,109,0.3); }
+  .r-med { background: rgba(245,158,11,0.15); color: var(--warn); border: 1px solid rgba(245,158,11,0.3); }
+  .r-low { background: rgba(0,255,157,0.15); color: var(--accent3); border: 1px solid rgba(0,255,157,0.3); }
+  .score-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .score-bar-bg { width: 60px; height: 4px; background: var(--border); border-radius: 2px; }
+  .score-bar-fill { height: 4px; border-radius: 2px; }
+  .score-num { font-family: 'Space Mono', monospace; font-size: 11px; font-weight: 700; }
+
+  /* SCORE PANEL */
+  .score-panel { display: flex; flex-direction: column; gap: 16px; }
+  .score-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .score-card-title { font-size: 13px; font-weight: 600; margin-bottom: 16px; display: flex; justify-content: space-between; }
+  .gauge-wrap { display: flex; flex-direction: column; align-items: center; margin-bottom: 12px; }
+  .gauge-value { font-family: 'Space Mono', monospace; font-size: 36px; font-weight: 700; color: var(--accent2); margin-top: -4px; }
+  .gauge-label { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .gauge-risk { font-size: 13px; font-weight: 700; color: var(--accent2); margin-top: 2px; font-family: 'Space Mono', monospace; }
+  .shap-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+  .shap-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .shap-lbl { font-size: 11px; color: var(--muted); width: 130px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .shap-bar-bg { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .shap-bar { height: 6px; border-radius: 3px; transition: width 0.5s; }
+  .shap-pos { background: var(--accent2); }
+  .shap-neg { background: var(--accent3); }
+  .shap-val { font-family: 'Space Mono', monospace; font-size: 10px; font-weight: 700; width: 40px; text-align: right; }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 200;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 28px; width: 520px; max-width: 95vw;
+    max-height: 90vh; overflow-y: auto;
+  }
+  .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .modal-sub { font-size: 12px; color: var(--muted); margin-bottom: 24px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+  .form-input {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 12px; color: var(--text);
+    font-size: 13px; font-family: 'DM Sans', sans-serif;
+    outline: none; transition: border 0.2s;
+  }
+  .form-input:focus { border-color: var(--accent); }
+  .form-actions { display: flex; gap: 12px; justify-content: flex-end; }
+  .btn-cancel {
+    padding: 10px 20px; border-radius: 8px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); font-size: 13px; cursor: pointer;
+  }
+  .btn-submit {
+    padding: 10px 24px; border-radius: 8px; border: none;
+    background: var(--accent); color: #000; font-size: 13px;
+    font-weight: 700; cursor: pointer; font-family: 'Space Mono', monospace;
+  }
+  .result-box {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px; margin-top: 16px; display: none;
+  }
+  .result-box.show { display: block; }
+  .result-score { font-family: 'Space Mono', monospace; font-size: 32px; font-weight: 700; }
+  .result-label { font-size: 13px; font-weight: 600; margin-top: 4px; }
+
+  /* CHART */
+  .chart-wrap { padding: 20px; }
+
+  /* ENDPOINTS */
+  .endpoint-list { padding: 8px 20px; }
+  .ep-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid rgba(30,45,69,0.5); font-size: 12px;
+  }
+  .ep-row:last-child { border-bottom: none; }
+  .ep-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent3); flex-shrink: 0; }
+  .method {
+    font-family: 'Space Mono', monospace; font-size: 10px; font-weight: 700;
+    padding: 2px 6px; border-radius: 3px; width: 38px; text-align: center; flex-shrink: 0;
+  }
+  .m-post { background: rgba(0,212,255,0.15); color: var(--accent); }
+  .m-get { background: rgba(0,255,157,0.15); color: var(--accent3); }
+  .ep-path { font-family: 'Space Mono', monospace; font-size: 11px; flex: 1; }
+  .ep-desc { font-size: 11px; color: var(--muted); }
+  .swagger-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.2);
+    padding: 4px 10px; border-radius: 4px;
+    font-family: 'Space Mono', monospace; font-size: 10px; color: var(--accent);
+    text-decoration: none; cursor: pointer;
+  }
+
+  .loading { opacity: 0.6; pointer-events: none; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #000; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-icon">FM</div>
+    <div class="logo-text">FAKE<span>GUARD</span></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <div class="status-badge"><div class="dot"></div>API LIVE</div>
+    <div class="model-badge">XGBoost v1.0 · F1: 0.7352</div>
+  </div>
+</div>
+
+<div class="main">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Navigation</div>
+      <div class="sidebar-item active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </div>
+      <div class="sidebar-item" onclick="document.getElementById('scoreModal').classList.add('open')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Score Merchant
+      </div>
+      <div class="sidebar-item" onclick="window.open('http://127.0.0.1:8000/docs','_blank')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        API Docs ↗
+      </div>
+    </div>
+    <div class="model-info-box">
+      <div class="mi-label">Active Model</div>
+      <div class="mi-name">XGBoost · v1.0.0</div>
+      <div class="mi-row"><span class="mi-key">F1-Score</span><span class="mi-val">0.7352</span></div>
+      <div class="mi-row"><span class="mi-key">ROC-AUC</span><span class="mi-val">0.8242</span></div>
+      <div class="mi-row"><span class="mi-key">Precision</span><span class="mi-val">0.89</span></div>
+      <div class="mi-row"><span class="mi-key">Features</span><span class="mi-val">10</span></div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Merchant Risk Dashboard</div>
+        <div class="page-sub">Real-time fraud detection · 5,000 merchants monitored</div>
+      </div>
+      <button class="score-btn" onclick="document.getElementById('scoreModal').classList.add('open')">+ SCORE MERCHANT</button>
+    </div>
+
+    <!-- STAT CARDS -->
+    <div class="stats-row">
+      <div class="stat-card c-blue">
+        <div class="stat-label">Total Merchants</div>
+        <div class="stat-value">5,000</div>
+        <div class="stat-change">Monitored in database</div>
+      </div>
+      <div class="stat-card c-red">
+        <div class="stat-label">Flagged as Fake</div>
+        <div class="stat-value red">1,043</div>
+        <div class="stat-change"><span class="up">↑ 20.8%</span> of total</div>
+      </div>
+      <div class="stat-card c-green">
+        <div class="stat-label">Model Precision</div>
+        <div class="stat-value green">89%</div>
+        <div class="stat-change">Of flagged = truly fake</div>
+      </div>
+      <div class="stat-card c-yellow">
+        <div class="stat-label">Avg Risk Score</div>
+        <div class="stat-value yellow">34.2</div>
+        <div class="stat-change">Out of 100</div>
+      </div>
+    </div>
+
+    <!-- MID ROW -->
+    <div class="mid-row">
+      <!-- TABLE -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">High Risk Merchants</div>
+            <div class="card-sub">Sorted by risk score · sample flagged merchants</div>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Merchant ID</th>
+              <th>Risk Score</th>
+              <th>Label</th>
+              <th>Chargeback</th>
+              <th>Biz Age</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="mid">M-01042</span></td>
+              <td><div class="score-bar-wrap"><div class="score-bar-bg"><div class="score-bar-fill" style="width:89%;background:#ff4d6d"></div></div><span class="score-num" style="color:#ff4d6d">89</span></div></td>
+              <td><span class="risk-badge r-high">HIGH</span></td>
+              <td style="font-family:monospace;font-size:11px">8.7%</td>
+              <td style="font-family:monospace;font-size:11px">18d</td>
+            </tr>
+            <tr>
+              <td><span class="mid">M-02891</span></td>
+              <td><div class="score-bar-wrap"><div class="score-bar-bg"><div class="score-bar-fill" style="width:79%;background:#ff4d6d"></div></div><span class="score-num" style="color:#ff4d6d">79</span></div></td>
+              <td><span class="risk-badge r-high">HIGH</span></td>
+              <td style="font-family:monospace;font-size:11px">5.2%</td>
+              <td style="font-family:monospace;font-size:11px">24d</td>
+            </tr>
+            <tr>
+              <td><span class="mid">M-03315</span></td>
+              <td><div class="score-bar-wrap"><div class="score-bar-bg"><div class="score-bar-fill" style="width:61%;background:#f59e0b"></div></div><span class="score-num" style="color:#f59e0b">61</span></div></td>
+              <td><span class="risk-badge r-med">MEDIUM</span></td>
+              <td style="font-family:monospace;font-size:11px">3.1%</td>
+              <td style="font-family:monospace;font-size:11px">45d</td>
+            </tr>
+            <tr>
+              <td><span class="mid">M-01198</span></td>
+              <td><div class="score-bar-wrap"><div class="score-bar-bg"><div class="score-bar-fill" style="width:54%;background:#f59e0b"></div></div><span class="score-num" style="color:#f59e0b">54</span></div></td>
+              <td><span class="risk-badge r-med">MEDIUM</span></td>
+              <td style="font-family:monospace;font-size:11px">2.8%</td>
+              <td style="font-family:monospace;font-size:11px">67d</td>
+            </tr>
+            <tr>
+              <td><span class="mid">M-04472</span></td>
+              <td><div class="score-bar-wrap"><div class="score-bar-bg"><div class="score-bar-fill" style="width:18%;background:#00ff9d"></div></div><span class="score-num" style="color:#00ff9d">18</span></div></td>
+              <td><span class="risk-badge r-low">LOW</span></td>
+              <td style="font-family:monospace;font-size:11px">0.4%</td>
+              <td style="font-family:monospace;font-size:11px">892d</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- SCORE PANEL -->
+      <div class="score-panel">
+        <div class="score-card">
+          <div class="score-card-title">
+            Live Risk Score
+            <span style="font-family:monospace;font-size:11px;color:var(--accent)" id="gaugeId">M-01042</span>
+          </div>
+          <div class="gauge-wrap">
+            <svg width="160" height="90" viewBox="0 0 160 90">
+              <path d="M 20 80 A 60 60 0 0 1 140 80" fill="none" stroke="#1e2d45" stroke-width="12" stroke-linecap="round"/>
+              <path id="gaugeFill" d="M 20 80 A 60 60 0 0 1 140 80" fill="none" stroke="url(#grad)" stroke-width="12" stroke-linecap="round" stroke-dasharray="188" stroke-dashoffset="24"/>
+              <defs>
+                <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#00ff9d"/>
+                  <stop offset="50%" stop-color="#f59e0b"/>
+                  <stop offset="100%" stop-color="#ff4d6d"/>
+                </linearGradient>
+              </defs>
+            </svg>
+            <div class="gauge-value" id="gaugeValue">89</div>
+            <div class="gauge-label">Risk Score / 100</div>
+            <div class="gauge-risk" id="gaugeLabel">⚠ HIGH RISK</div>
+          </div>
+        </div>
+        <div class="score-card">
+          <div class="shap-title">SHAP — Why flagged?</div>
+          <div id="shapRows">
+            <div class="shap-row"><div class="shap-lbl">refund_rate</div><div class="shap-bar-bg"><div class="shap-bar shap-pos" style="width:90%"></div></div><div class="shap-val" style="color:#ff4d6d">+1.38</div></div>
+            <div class="shap-row"><div class="shap-lbl">chargeback_rate</div><div class="shap-bar-bg"><div class="shap-bar shap-pos" style="width:88%"></div></div><div class="shap-val" style="color:#ff4d6d">+1.38</div></div>
+            <div class="shap-row"><div class="shap-lbl">txn_velocity</div><div class="shap-bar-bg"><div class="shap-bar shap-pos" style="width:40%"></div></div><div class="shap-val" style="color:#ff4d6d">+0.62</div></div>
+            <div class="shap-row"><div class="shap-lbl">category_mismatch</div><div class="shap-bar-bg"><div class="shap-bar shap-neg" style="width:15%"></div></div><div class="shap-val" style="color:#00ff9d">-0.20</div></div>
+            <div class="shap-row"><div class="shap-lbl">incomplete_profile</div><div class="shap-bar-bg"><div class="shap-bar shap-neg" style="width:10%"></div></div><div class="shap-val" style="color:#00ff9d">-0.14</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BOTTOM ROW -->
+    <div class="bottom-row">
+      <!-- CHART -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Risk Score Distribution</div>
+            <div class="card-sub">All merchants bucketed by score range</div>
+          </div>
+        </div>
+        <div class="chart-wrap" style="height:220px">
+          <canvas id="distChart"></canvas>
+        </div>
+      </div>
+
+      <!-- API ENDPOINTS -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">REST API Endpoints</div>
+            <div class="card-sub">FastAPI · Powered by XGBoost</div>
+          </div>
+          <a class="swagger-link" href="http://127.0.0.1:8000/docs" target="_blank">🔗 Swagger UI</a>
+        </div>
+        <div class="endpoint-list">
+          <div class="ep-row"><div class="ep-dot"></div><span class="method m-post">POST</span><span class="ep-path">/api/v1/score</span><span class="ep-desc">Score merchant</span></div>
+          <div class="ep-row"><div class="ep-dot"></div><span class="method m-post">POST</span><span class="ep-path">/api/v1/score/batch</span><span class="ep-desc">Batch score</span></div>
+          <div class="ep-row"><div class="ep-dot"></div><span class="method m-get">GET</span><span class="ep-path">/api/v1/model/info</span><span class="ep-desc">Model details</span></div>
+          <div class="ep-row"><div class="ep-dot"></div><span class="method m-get">GET</span><span class="ep-path">/api/v1/analytics/summary</span><span class="ep-desc">Dashboard stats</span></div>
+          <div class="ep-row"><div class="ep-dot"></div><span class="method m-get">GET</span><span class="ep-path">/docs</span><span class="ep-desc">Swagger UI</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SCORE MODAL -->
+<div class="modal-overlay" id="scoreModal">
+  <div class="modal">
+    <div class="modal-title">Score a Merchant</div>
+    <div class="modal-sub">Enter merchant data to get a real-time fraud risk score</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Merchant ID</label>
+        <input class="form-input" id="f_id" value="M-99001" placeholder="M-99001">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Txn Velocity (daily)</label>
+        <input class="form-input" id="f_vel" type="number" value="245" placeholder="50">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Avg Txn Value (INR)</label>
+        <input class="form-input" id="f_val" type="number" value="12500" placeholder="850">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Refund Rate (0–1)</label>
+        <input class="form-input" id="f_ref" type="number" step="0.01" value="0.21" placeholder="0.05">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Chargeback Rate (0–1)</label>
+        <input class="form-input" id="f_chg" type="number" step="0.001" value="0.087" placeholder="0.01">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Business Age (days)</label>
+        <input class="form-input" id="f_age" type="number" value="18" placeholder="365">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category Mismatch</label>
+        <input class="form-input" id="f_cat" type="number" step="0.01" value="0.72" placeholder="0.1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Night Txn Ratio</label>
+        <input class="form-input" id="f_night" type="number" step="0.01" value="0.38" placeholder="0.08">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Unique Customer Ratio</label>
+        <input class="form-input" id="f_uniq" type="number" step="0.01" value="0.95" placeholder="0.55">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Geographic Spread</label>
+        <input class="form-input" id="f_geo" type="number" value="18" placeholder="3">
+      </div>
+      <div class="form-group" style="grid-column:span 2">
+        <label class="form-label">Incomplete Profile Score</label>
+        <input class="form-input" id="f_inc" type="number" step="0.01" value="0.72" placeholder="0.05">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn-cancel" onclick="document.getElementById('scoreModal').classList.remove('open')">Cancel</button>
+      <button class="btn-submit" id="submitBtn" onclick="scoreMerchant()">▶ SCORE</button>
+    </div>
+    <div class="result-box" id="resultBox">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Risk Score</div>
+          <div class="result-score" id="resultScore">—</div>
+          <div class="result-label" id="resultLabel">—</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Fraud Probability</div>
+          <div style="font-family:monospace;font-size:18px;font-weight:700" id="resultProb">—</div>
+          <div id="resultMsg" style="font-size:11px;color:var(--muted);margin-top:4px;max-width:180px;text-align:right"></div>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <div class="shap-title">Top Risk Factors</div>
+        <div id="resultShap"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Chart ──────────────────────────────────────────────────────────────────
+  const ctx = document.getElementById('distChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['0-10','10-20','20-30','30-40','40-50','50-60','60-70','70-80','80-90','90-100'],
+      datasets: [{
+        label: 'Merchants',
+        data: [420, 680, 850, 920, 610, 420, 280, 340, 280, 200],
+        backgroundColor: [
+          'rgba(0,255,157,0.6)','rgba(0,255,157,0.6)','rgba(0,255,157,0.6)','rgba(0,255,157,0.6)',
+          'rgba(245,158,11,0.6)','rgba(245,158,11,0.6)','rgba(245,158,11,0.6)',
+          'rgba(255,77,109,0.7)','rgba(255,77,109,0.8)','rgba(255,77,109,0.9)'
+        ],
+        borderRadius: 4, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: 'rgba(30,45,69,0.5)' }, ticks: { color: '#64748b', font: { size: 10 } } },
+        y: { grid: { color: 'rgba(30,45,69,0.5)' }, ticks: { color: '#64748b', font: { size: 10 } } }
+      }
+    }
+  });
+
+  // ── Score Merchant ─────────────────────────────────────────────────────────
+  async function scoreMerchant() {
+    const btn = document.getElementById('submitBtn');
+    btn.innerHTML = '<span class="spinner"></span>SCORING...';
+    btn.classList.add('loading');
+
+    const payload = {
+      merchant_id: document.getElementById('f_id').value,
+      transaction_velocity: parseFloat(document.getElementById('f_vel').value),
+      avg_transaction_value: parseFloat(document.getElementById('f_val').value),
+      refund_rate: parseFloat(document.getElementById('f_ref').value),
+      chargeback_rate: parseFloat(document.getElementById('f_chg').value),
+      business_age_days: parseInt(document.getElementById('f_age').value),
+      category_mismatch_score: parseFloat(document.getElementById('f_cat').value),
+      night_txn_ratio: parseFloat(document.getElementById('f_night').value),
+      unique_customer_ratio: parseFloat(document.getElementById('f_uniq').value),
+      geographic_spread: parseInt(document.getElementById('f_geo').value),
+      incomplete_profile_score: parseFloat(document.getElementById('f_inc').value),
+    };
+
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/v1/score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+
+      // Update result box
+      const scoreEl = document.getElementById('resultScore');
+      const labelEl = document.getElementById('resultLabel');
+      scoreEl.textContent = data.risk_score;
+      scoreEl.style.color = data.risk_label === 'HIGH' ? '#ff4d6d' : data.risk_label === 'MEDIUM' ? '#f59e0b' : '#00ff9d';
+      labelEl.textContent = `⚠ ${data.risk_label} RISK`;
+      labelEl.style.color = data.risk_label === 'HIGH' ? '#ff4d6d' : data.risk_label === 'MEDIUM' ? '#f59e0b' : '#00ff9d';
+      document.getElementById('resultProb').textContent = (data.fraud_probability * 100).toFixed(1) + '%';
+      document.getElementById('resultMsg').textContent = data.message;
+
+      // SHAP rows
+      const shapContainer = document.getElementById('resultShap');
+      shapContainer.innerHTML = data.shap_explanations.map(s => {
+        const pct = Math.min(Math.abs(s.impact) * 40, 100);
+        const isPos = s.impact > 0;
+        return `<div class="shap-row">
+          <div class="shap-lbl">${s.feature}</div>
+          <div class="shap-bar-bg"><div class="shap-bar ${isPos ? 'shap-pos' : 'shap-neg'}" style="width:${pct}%"></div></div>
+          <div class="shap-val" style="color:${isPos ? '#ff4d6d' : '#00ff9d'}">${isPos ? '+' : ''}${s.impact.toFixed(2)}</div>
+        </div>`;
+      }).join('');
+
+      // Update gauge
+      document.getElementById('gaugeValue').textContent = data.risk_score;
+      document.getElementById('gaugeId').textContent = data.merchant_id;
+      document.getElementById('gaugeLabel').textContent = `⚠ ${data.risk_label} RISK`;
+      document.getElementById('gaugeLabel').style.color = data.risk_label === 'HIGH' ? '#ff4d6d' : data.risk_label === 'MEDIUM' ? '#f59e0b' : '#00ff9d';
+
+      document.getElementById('resultBox').classList.add('show');
+    } catch (e) {
+      alert('Error: Make sure your FastAPI server is running at http://127.0.0.1:8000');
+    }
+
+    btn.innerHTML = '▶ SCORE';
+    btn.classList.remove('loading');
+  }
+
+  // Close modal on overlay click
+  document.getElementById('scoreModal').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+  });
+</script>
+</body>
+</html>
