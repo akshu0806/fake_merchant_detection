@@ -1,15 +1,3 @@
-"""
-main.py
--------
-FastAPI application for Fake Merchant Detection System.
-Phase 2: Added SQLite database to persist merchant scores.
-
-Run:
-    uvicorn api.main:app --reload
-Then open:
-    http://127.0.0.1:8000/docs  ← Swagger UI
-"""
-
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -114,8 +102,8 @@ class BatchInput(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def get_risk_label(score: int) -> str:
-    if score <= 40:   return "LOW"
-    elif score <= 70: return "MEDIUM"
+    if score <= 30:   return "LOW"
+    elif score <= 60: return "MEDIUM"
     else:             return "HIGH"
 
 def get_message(label: str) -> str:
